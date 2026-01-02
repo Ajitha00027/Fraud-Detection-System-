@@ -22,13 +22,11 @@ It automatically blocks accounts that perform more than **3 transactions within 
 ---
 
  ## Features
-- Java Servlet backend
-- MySQL database
-- DAO-based data layer
-- Fraud detection logic
-- REST-style POST endpoint `/Transaction`
-- Automatic account blocking and fraud alert logging
-- Log4j-based logging
+- Create and manage accounts
+- Credit and debit transactions
+- Persist data using DAO layer
+- Fraud detection and validation logic
+- Automatic account blocking on fraud detectiong
 
 ---
 
