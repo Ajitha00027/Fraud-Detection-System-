@@ -33,6 +33,13 @@ It automatically blocks accounts that perform more than **3 transactions within 
 
 ---
 
+## Testing
+- The test suite is designed to ensure:
+- Functional correctness
+- Robust error handling
+- High SonarQube line and branch coverage
+- Clear separation of concerns across layers
+
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/1a0447d5-23a8-47fb-8b3e-ab1f42fd64a3" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/9292fda0-755b-4fd9-af76-c27db396bf34" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/ff4226a4-0bc5-4ad2-8ec8-5cef8821396d" />
