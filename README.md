@@ -18,6 +18,7 @@ It automatically blocks accounts that perform more than **3 transactions within 
 - SonarQube
 - Maven
 - Postman
+- Mockito
 
 ---
 
