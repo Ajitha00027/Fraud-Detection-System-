@@ -10,8 +10,7 @@ It automatically blocks accounts that perform more than **3 transactions within 
 - Java 21
 - Jakarta Servlet API
 - Apache Tomcat 
-- MySQL 
-- Log4j2
+- MySQL
 - JDBC
 - JUnit
 - JaCoCo
