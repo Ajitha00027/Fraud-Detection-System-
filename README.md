@@ -26,7 +26,7 @@ It automatically blocks accounts that perform more than **3 transactions within 
 - Credit and debit transactions
 - Persist data using DAO layer
 - Fraud detection and validation logic
-- Automatic account blocking on fraud detectiong
+- Automatic account blocking on fraud detecting
 
 ---
 
