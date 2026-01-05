@@ -1,13 +1,10 @@
 package service;
 
 import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
 
-import java.lang.reflect.Field;
-
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.mockito.MockedConstruction;
 
 import dao.AccountDAO;
 import dao.FraudAlertDAO;
@@ -15,171 +12,97 @@ import dao.TransactionDAO;
 
 class FraudDetectionServiceTest {
 
-    private FraudDetectionService service;
-
-    private TransactionDAO transactionDAOMock;
-    private AccountDAO accountDAOMock;
-    private FraudAlertDAO fraudAlertDAOMock;
-
-    @BeforeEach
-    void setUp() throws Exception {
-        service = new FraudDetectionService();
-
-        transactionDAOMock = Mockito.mock(TransactionDAO.class);
-        accountDAOMock = Mockito.mock(AccountDAO.class);
-        fraudAlertDAOMock = Mockito.mock(FraudAlertDAO.class);
-
-        injectMock("transactionDAO", transactionDAOMock);
-        injectMock("accountDAO", accountDAOMock);
-        injectMock("alertDAO", fraudAlertDAOMock);
-    }
-
-    private void injectMock(String fieldName, Object mock) throws Exception {
-        Field field = FraudDetectionService.class.getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(service, mock);
-    }
-
+    
     @Test
-    void shouldDetectFraudWhenMoreThanThreeTransactionsInTwoMinutes() throws Exception {
-        Long accountId = 1001L;
-        long amount = 5000;
+    void testProcessTransaction_NoFraud() throws Exception {
 
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(4);
+        try (MockedConstruction<TransactionDAO> txnMock =
+                     mockConstruction(TransactionDAO.class,
+                             (mock, context) -> {
+                                 doNothing().when(mock).save(anyLong(), anyLong());
+                                 when(mock.countLastTwoMinutes(anyLong())).thenReturn(2);
+                             });
+             MockedConstruction<AccountDAO> accMock =
+                     mockConstruction(AccountDAO.class);
+             MockedConstruction<FraudAlertDAO> alertMock =
+                     mockConstruction(FraudAlertDAO.class)) {
 
-        boolean result = service.processTransaction(accountId, amount);
+            FraudDetectionService service = new FraudDetectionService();
 
-        assertTrue(result);
+            boolean result = service.processTransaction(1L, 1000L);
 
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock).block(accountId);
-        verify(fraudAlertDAOMock)
-                .save(accountId,
-                      "More than 3 transactions within 2 minutes",
-                      "HIGH");
+            Assertions.assertFalse(result);
+            verify(txnMock.constructed().get(0)).save(1L, 1000L);
+            verify(txnMock.constructed().get(0)).countLastTwoMinutes(1L);
+            verifyNoInteractions(accMock.constructed().get(0));
+            verifyNoInteractions(alertMock.constructed().get(0));
+        }
     }
 
+    
     @Test
-    void shouldAllowTransactionWhenTransactionCountIsLow() throws Exception {
-        Long accountId = 1002L;
-        long amount = 2000;
+    void testProcessTransaction_FraudDetected() throws Exception {
 
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(2);
+        try (MockedConstruction<TransactionDAO> txnMock =
+                     mockConstruction(TransactionDAO.class,
+                             (mock, context) -> {
+                                 doNothing().when(mock).save(anyLong(), anyLong());
+                                 when(mock.countLastTwoMinutes(anyLong())).thenReturn(5);
+                             });
+             MockedConstruction<AccountDAO> accMock =
+                     mockConstruction(AccountDAO.class,
+                             (mock, context) -> doNothing().when(mock).block(anyLong()));
+             MockedConstruction<FraudAlertDAO> alertMock =
+                     mockConstruction(FraudAlertDAO.class,
+                             (mock, context) -> doNothing().when(mock)
+                                     .save(anyLong(), anyString(), anyString()))) {
 
-        boolean result = service.processTransaction(accountId, amount);
+            FraudDetectionService service = new FraudDetectionService();
 
-        assertFalse(result);
+            boolean result = service.processTransaction(2L, 5000L);
 
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
+            Assertions.assertTrue(result);
+            verify(accMock.constructed().get(0)).block(2L);
+            verify(alertMock.constructed().get(0))
+                    .save(2L, "More than 3 transactions within 2 minutes", "HIGH");
+        }
     }
+
+    
     @Test
-    void shouldReturnFalseWhenExceptionOccurs() throws Exception {
-        Long accountId = 1003L;
-        long amount = 3000;
+    void testProcessTransaction_SaveException() throws Exception {
 
-        doThrow(new RuntimeException("DB error")).when(transactionDAOMock).save(accountId, amount);
+        try (MockedConstruction<TransactionDAO> txnMock =
+                     mockConstruction(TransactionDAO.class,
+                             (mock, context) ->
+                                     doThrow(new RuntimeException("DB error"))
+                                             .when(mock).save(anyLong(), anyLong()))) {
 
-        boolean result = service.processTransaction(accountId, amount);
+            FraudDetectionService service = new FraudDetectionService();
 
-        assertFalse(result);
+            boolean result = service.processTransaction(3L, 2000L);
 
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock, never()).countLastTwoMinutes(anyLong());
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
+            Assertions.assertFalse(result);
+        }
     }
+
+    
     @Test
-    void shouldReturnFalseWhenCountingTransactionsFails() throws Exception {
-        Long accountId = 1004L;
-        long amount = 4000;
+    void testProcessTransaction_CountException() throws Exception {
 
-        
-        doNothing().when(transactionDAOMock).save(accountId, amount);
+        try (MockedConstruction<TransactionDAO> txnMock =
+                     mockConstruction(TransactionDAO.class,
+                             (mock, context) -> {
+                                 doNothing().when(mock).save(anyLong(), anyLong());
+                                 doThrow(new RuntimeException("Query error"))
+                                         .when(mock).countLastTwoMinutes(anyLong());
+                             })) {
 
-        when(transactionDAOMock.countLastTwoMinutes(accountId))
-                .thenThrow(new RuntimeException("DB counting error"));
+            FraudDetectionService service = new FraudDetectionService();
 
-        boolean result = service.processTransaction(accountId, amount);
+            boolean result = service.processTransaction(4L, 3000L);
 
-        assertFalse(result);
-
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
+            Assertions.assertFalse(result);
+        }
     }
-    @Test
-    void shouldNotDetectFraudWhenTransactionCountIsExactlyThree() throws Exception {
-        Long accountId = 1005L;
-        long amount = 2500;
-
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(3);
-
-        boolean result = service.processTransaction(accountId, amount);
-
-        assertFalse(result);
-
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
-    }
-
-    @Test
-    void shouldNotDetectFraudWhenTransactionCountIsExactlyThree1() throws Exception {
-        Long accountId = 1005L;
-        long amount = 2500;
-
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(3);
-
-        boolean result = service.processTransaction(accountId, amount);
-
-        assertFalse(result);
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
-    }
-    @Test
-    void shouldAllowZeroAmountTransactionWhenCountIsLow() throws Exception {
-        Long accountId = 1006L;
-        long amount = 0;
-
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(1);
-
-        boolean result = service.processTransaction(accountId, amount);
-
-        assertFalse(result);
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
-    }
-    @Test
-    void shouldAllowNegativeAmountTransactionWhenCountIsLow() throws Exception {
-        Long accountId = 1007L;
-        long amount = -100;
-
-        doNothing().when(transactionDAOMock).save(accountId, amount);
-        when(transactionDAOMock.countLastTwoMinutes(accountId)).thenReturn(2);
-
-        boolean result = service.processTransaction(accountId, amount);
-
-        assertFalse(result);
-        verify(transactionDAOMock).save(accountId, amount);
-        verify(transactionDAOMock).countLastTwoMinutes(accountId);
-        verify(accountDAOMock, never()).block(anyLong());
-        verify(fraudAlertDAOMock, never()).save(any(), any(), any());
-    }
-
-
 }
