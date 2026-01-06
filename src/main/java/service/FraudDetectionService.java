@@ -13,15 +13,33 @@ public class FraudDetectionService {
 	public boolean processTransaction(Long accountId, long amount) {
 		try {
 			transactionDAO.save(accountId, amount);
+
 			int count = transactionDAO.countLastTwoMinutes(accountId);
 
 			if (count > 3) {
 				accountDAO.block(accountId);
-				alertDAO.save(accountId, "More than 3 transactions within 2 minutes", "HIGH");
+				alertDAO.save(
+					accountId,
+					"More than 3 transactions within 2 minutes",
+					"HIGH"
+				);
 				return true;
 			}
 
 			return false;
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			return false;
+		}
+	}
+
+	public boolean checkTransaction(Long accountId, long amount) {
+		try {
+			int recentCount = transactionDAO.countLastTwoMinutes(accountId);
+
+			return (recentCount + 1) > 3;
+
 		} catch (Exception e) {
 			e.printStackTrace();
 			return false;
